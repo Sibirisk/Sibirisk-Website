@@ -64,7 +64,7 @@ body.admin .card::after{content:"Edit";position:absolute;top:12px;right:12px;pad
 .pv.has span{opacity:0;background:var(--glass-hi)}.pv.has:hover span{opacity:1}
 .row{display:flex;justify-content:center;flex-wrap:wrap;gap:2px;margin-top:12px;font-size:.85rem}
 #voiceBtn{position:fixed;left:calc(16px + env(safe-area-inset-left,0px));top:50%;translate:0 -50%;z-index:10;display:grid;place-items:center;width:56px;height:56px;padding:0 0 3px;border:2px solid #000;border-radius:50%;background:#fff;color:#000;font:inherit;font-size:26px;line-height:1;cursor:pointer;box-shadow:0 8px 26px rgba(0,0,0,.5);transition:transform .4s var(--ease);animation:pop .6s var(--ease) both}
-#voiceBtn[hidden]{display:none}
+#voiceBtn.admin::after{content:"";position:absolute;top:-3px;right:-3px;width:15px;height:15px;border-radius:50%;background:#000;border:2px solid #fff}
 #voiceBtn:hover,#voiceBtn:focus-visible{transform:scale(1.1);outline:none}
 #voiceBtn:active{transform:scale(.96)}
 #voiceBtn.playing,#voiceBtn.attn{animation:ring 1.4s ease-out infinite}
@@ -83,7 +83,8 @@ body.admin .card::after{content:"Edit";position:absolute;top:12px;right:12px;pad
 <main><div class="grid" id="grid"></div></main>
 
 <audio id="voice" src="welcome.mp3" preload="auto"></audio>
-<button id="voiceBtn" type="button" hidden aria-label="Play welcome voiceover" aria-pressed="false">&#9835;</button>
+<audio id="voiceAdmin" src="welcome_admin.mp3" preload="auto"></audio>
+<button id="voiceBtn" type="button" aria-label="Play welcome voiceover" aria-pressed="false">&#9835;</button>
 <div id="bar" hidden><span>Admin mode</span><button id="add">Add card</button><button id="out">Log out</button></div>
 <button id="x" aria-label="Admin login">&times;</button>
 
@@ -124,7 +125,8 @@ const PH = '<svg class="ph" viewBox="0 0 24 24" fill="none" stroke="currentColor
 function render(first) {
   document.body.classList.toggle('admin', admin);
   $('#bar').hidden = !admin;
-  $('#voiceBtn').hidden = !admin;
+  $('#voiceBtn').classList.toggle('admin', admin);
+  $('#voiceBtn').setAttribute('aria-label', admin ? 'Play admin welcome voiceover' : 'Play welcome voiceover');
   $('#grid').innerHTML = games.map((g, i) => {
     const url = cleanUrl(g.url);
     return `<a class="card${first ? ' enter' : ''}" style="--i:${i}" data-i="${i}" aria-label="${esc(g.title || 'Empty slot')}" ${url ? `href="${esc(url)}" target="_blank" rel="noopener"` : 'role="button" tabindex="0"'}>
@@ -199,20 +201,26 @@ $('#del').onclick = e => {
 };
 $('#add').onclick = () => { games.push({ title: '', img: '', url: '' }); save(); render(); openEditor(games.length - 1); };
 
-/* Welcome voiceover: plays once after admin login; the note button toggles it */
-const voice = $('#voice'), vbtn = $('#voiceBtn');
-const stopVoice = () => { voice.pause(); try { voice.currentTime = 0; } catch (e) {} };
+/* Voiceovers: visitors get welcome.mp3, admin mode gets welcome_admin.mp3 */
+const vbtn = $('#voiceBtn'), tracks = [$('#voice'), $('#voiceAdmin')];
+const current = () => admin ? $('#voiceAdmin') : $('#voice');
+const stopVoice = () => tracks.forEach(a => { a.pause(); try { a.currentTime = 0; } catch (e) {} });
 async function playVoice() {
-  vbtn.classList.remove('attn');
-  try { voice.currentTime = 0; await voice.play(); }
+  stopVoice(); vbtn.classList.remove('attn');
+  const a = current();
+  try { await a.play(); }
   catch (err) {
     if (err.name === 'NotAllowedError') vbtn.classList.add('attn');   /* autoplay blocked: pulse the icon so a click can start it */
-    else console.warn('Welcome audio could not play. Is welcome.mp3 in the same folder as this file?', err);
+    else console.warn('Could not play ' + a.getAttribute('src') + '. Is it in the same folder as this file?', err);
   }
 }
-voice.addEventListener('play', () => { vbtn.classList.add('playing'); vbtn.setAttribute('aria-pressed', 'true'); });
-['pause', 'ended'].forEach(ev => voice.addEventListener(ev, () => { vbtn.classList.remove('playing'); vbtn.setAttribute('aria-pressed', 'false'); }));
-vbtn.onclick = () => voice.paused ? playVoice() : stopVoice();
+tracks.forEach(a => {
+  a.addEventListener('play', () => { vbtn.classList.add('playing'); vbtn.setAttribute('aria-pressed', 'true'); });
+  ['pause', 'ended'].forEach(ev => a.addEventListener(ev, () => {
+    if (tracks.every(x => x.paused)) { vbtn.classList.remove('playing'); vbtn.setAttribute('aria-pressed', 'false'); }
+  }));
+});
+vbtn.onclick = () => current().paused ? playVoice() : stopVoice();
 
 /* Parallax */
 if (matchMedia('(prefers-reduced-motion: no-preference)').matches) {
