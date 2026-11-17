@@ -22,6 +22,13 @@ h1{font-family:"Archivo Black","Arial Black",Impact,system-ui,sans-serif;font-si
 
 main{padding:0 20px clamp(120px,22vh,240px)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),320px));justify-content:center;gap:28px;max-width:780px;margin:0 auto}
+.game-tile{display:flex;flex-direction:column;align-items:center;gap:12px;min-width:0;width:100%}
+.game-tile .card{width:100%}
+.music-toggle{display:grid;place-items:center;width:54px;height:54px;flex:0 0 54px;padding:0;border:2px solid rgba(255,255,255,.92);border-radius:50%;background:rgba(0,0,0,.32);color:#fff;font:700 27px/1 "Space Grotesk",system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(10px);box-shadow:0 8px 26px rgba(0,0,0,.48);transition:transform .25s var(--ease),background .25s,color .25s,box-shadow .25s}
+.music-toggle:hover,.music-toggle:focus-visible{transform:scale(1.1);background:rgba(255,255,255,.92);color:#05060a;outline:none;box-shadow:0 10px 32px rgba(0,0,0,.55),0 0 22px rgba(255,255,255,.28)}
+.music-toggle:active{transform:scale(.96)}
+.music-toggle.playing{background:#fff;color:#05060a;animation:music-ring 1.6s ease-out infinite}
+@keyframes music-ring{from{box-shadow:0 0 0 0 rgba(255,255,255,.5),0 8px 26px rgba(0,0,0,.48)}to{box-shadow:0 0 0 14px rgba(255,255,255,0),0 8px 26px rgba(0,0,0,.48)}}
 .card{position:relative;display:block;aspect-ratio:1;overflow:hidden;border-radius:24px;color:#000;text-decoration:none;cursor:pointer;
 background:linear-gradient(145deg,rgba(255,255,255,.76),rgba(255,255,255,.4));backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.75);
 box-shadow:0 22px 54px rgba(0,0,0,.5);transition:transform .6s var(--ease),box-shadow .6s var(--ease)}
@@ -84,6 +91,9 @@ body.admin .card::after{content:"Edit";position:absolute;top:12px;right:12px;pad
 
 <audio id="voice" src="welcome.mp3" preload="auto"></audio>
 <audio id="voiceAdmin" src="welcome_admin.mp3" preload="auto"></audio>
+<!-- Background music files: upload both MP3s beside this index.html file. -->
+<audio id="trafikaMusic" src="trafika.mp3" preload="none" loop></audio>
+<audio id="friendAiMusic" src="my friendai.mp3" preload="none" loop></audio>
 <button id="voiceBtn" type="button" aria-label="Play welcome voiceover" aria-pressed="false">&#9835;</button>
 <div id="bar" hidden><span>Admin mode</span><button id="add">Add card</button><button id="out">Log out</button></div>
 <button id="x" aria-label="Admin login">&times;</button>
@@ -129,10 +139,21 @@ function render(first) {
   $('#voiceBtn').setAttribute('aria-label', admin ? 'Play admin welcome voiceover' : 'Play welcome voiceover');
   $('#grid').innerHTML = games.map((g, i) => {
     const url = cleanUrl(g.url);
-    return `<a class="card${first ? ' enter' : ''}" style="--i:${i}" data-i="${i}" aria-label="${esc(g.title || 'Empty slot')}" ${url ? `href="${esc(url)}" target="_blank" rel="noopener"` : 'role="button" tabindex="0"'}>
-      ${g.img ? `<img src="${esc(g.img)}" alt="">` : PH}
-      <div class="ov"><span class="${g.title ? '' : 'soon'}">${esc(g.title || 'Coming soon')}</span></div></a>`;
+    const titleKey = String(g.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    // The first two homepage tiles are Trafika and My Friend AI.
+    const musicKey = titleKey.includes('trafika') ? 'trafika'
+      : (titleKey.includes('myfriendai') || titleKey.includes('friendai')) ? 'friendai'
+      : i === 0 ? 'trafika' : i === 1 ? 'friendai' : '';
+    const musicName = musicKey === 'trafika' ? 'Trafika' : 'My Friend AI';
+    return `<div class="game-tile">
+      <a class="card${first ? ' enter' : ''}" style="--i:${i}" data-i="${i}" aria-label="${esc(g.title || 'Empty slot')}" ${url ? `href="${esc(url)}" target="_blank" rel="noopener"` : 'role="button" tabindex="0"'}>
+        ${g.img ? `<img src="${esc(g.img)}" alt="">` : PH}
+        <div class="ov"><span class="${g.title ? '' : 'soon'}">${esc(g.title || 'Coming soon')}</span></div>
+      </a>
+      ${musicKey ? `<button class="music-toggle" type="button" data-track="${musicKey}" aria-label="Play ${musicName} music" aria-pressed="false" title="Play ${musicName} music">&#9835;</button>` : ''}
+    </div>`;
   }).join('');
+  syncMusicButtons();
 }
 
 /* Cards: public click follows the link at once; admin click opens the editor */
@@ -221,6 +242,55 @@ tracks.forEach(a => {
   }));
 });
 vbtn.onclick = () => current().paused ? playVoice() : stopVoice();
+
+/* Per-app background music buttons shown directly underneath the two app images. */
+const backgroundTracks = {
+  trafika: $('#trafikaMusic'),
+  friendai: $('#friendAiMusic')
+};
+function syncMusicButtons() {
+  Object.entries(backgroundTracks).forEach(([key, audio]) => {
+    const button = document.querySelector(`.music-toggle[data-track="${key}"]`);
+    if (!button) return;
+    const playing = !audio.paused;
+    const name = key === 'trafika' ? 'Trafika' : 'My Friend AI';
+    button.classList.toggle('playing', playing);
+    button.setAttribute('aria-pressed', String(playing));
+    button.setAttribute('aria-label', `${playing ? 'Pause' : 'Play'} ${name} music`);
+    button.title = `${playing ? 'Pause' : 'Play'} ${name} music`;
+  });
+}
+Object.values(backgroundTracks).forEach(audio => {
+  audio.addEventListener('play', syncMusicButtons);
+  audio.addEventListener('pause', syncMusicButtons);
+  audio.addEventListener('ended', syncMusicButtons);
+});
+$('#grid').addEventListener('click', async e => {
+  const button = e.target.closest('.music-toggle');
+  if (!button) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const audio = backgroundTracks[button.dataset.track];
+  if (!audio) return;
+
+  if (!audio.paused) {
+    audio.pause();
+    return;
+  }
+
+  // Only one app soundtrack can play at a time.
+  Object.values(backgroundTracks).forEach(other => {
+    if (other !== audio) {
+      other.pause();
+      other.currentTime = 0;
+    }
+  });
+  try {
+    await audio.play();
+  } catch (err) {
+    console.warn(`Could not play ${audio.getAttribute('src')}. Upload that MP3 beside index.html.`, err);
+  }
+});
 
 /* Parallax */
 if (matchMedia('(prefers-reduced-motion: no-preference)').matches) {
